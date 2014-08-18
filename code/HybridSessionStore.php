@@ -37,6 +37,23 @@ else {
 	}
 }
 
+interface HybridSessionHandlerInterface extends SessionHandlerInterface {
+	
+	/**
+	 * Assign a new session secret key
+	 *
+	 * @param string $key
+	 */
+	public function setKey($key);
+
+	/**
+	 * Get the session secret key
+	 *
+	 * @return string
+	 */
+	public function getKey();
+}
+
 /**
  * Class HybridSessionStore_Crypto
  * Some cryptography used for Session cookie encryption. Requires the mcrypt extension.
@@ -164,14 +181,29 @@ class HybridSessionStore_Crypto {
 	}
 }
 
-abstract class HybridSessionStore_Base implements SessionHandlerInterface {
+abstract class HybridSessionStore_Base implements HybridSessionHandlerInterface {
+
+	/**
+	 * Session secret key
+	 *
+	 * @var string
+	 */
+	protected $key = null;
+
+	public function setKey($key) {
+		$this->key = $key;
+	}
+
+	public function getKey() {
+		return $this->key;
+	}
 
 	/**
 	 * Get lifetime in number of seconds
 	 *
 	 * @return int
 	 */
-	public function getLifetime() {
+	protected function getLifetime() {
 		$params = session_get_cookie_params();
 		$cookieLifetime = (int)$params['lifetime'];
 		$gcLifetime = (int)ini_get('session.gc_maxlifetime');
@@ -183,7 +215,7 @@ abstract class HybridSessionStore_Base implements SessionHandlerInterface {
 	 *
 	 * @return int
 	 */
-	public function getNow() {
+	protected function getNow() {
 		return (int)SS_Datetime::now()->Format('U');
 	}
 }
@@ -213,14 +245,6 @@ class HybridSessionStore_Cookie extends HybridSessionStore_Base {
 	private static $max_length = 1024;
 
 	/**
-	 * Identify key for the cookie
-	 *
-	 * @var string
-	 * @config
-	 */
-	private static $key = null;
-
-	/**
 	 * Encryption service
 	 *
 	 * @var HybridSessionStore_Crypto
@@ -246,26 +270,6 @@ class HybridSessionStore_Cookie extends HybridSessionStore_Base {
 	 */
 	protected $currentCookieData;
 
-	public function __construct() {
-		// Enforce configuration of a cookie key
-		$key = $this->getKey();
-		if(empty($key)) {
-			user_error('HybridSessionStore_Cookie::$key not set, disabling cookie-based storage', E_USER_WARNING);
-		}
-	}
-
-	/**
-	 * Get the configured session key
-	 *
-	 * @return string
-	 */
-	protected function getKey() {
-		if($key = Config::inst()->get('HybridSessionStore_Cookie', 'key')) return $key;
-		if(defined('SS_SESSION_KEY')) return SS_SESSION_KEY;
-		// Only enable ENV keys when using CLI
-		if(Director::is_cli() && ($key = getenv('SS_SESSION_KEY'))) return $key;
-	}
-
 	public function open($save_path, $name) {
 		$this->cookie = $name.'_2';
 		// Read the incoming value, then clear the cookie - we might not be able
@@ -276,7 +280,7 @@ class HybridSessionStore_Cookie extends HybridSessionStore_Base {
 		if ($this->currentCookieData) Cookie::set($this->cookie, '');
 	}
 
-	public function close(){
+	public function close() {
 	}
 
 	/**
@@ -443,15 +447,23 @@ class HybridSessionStore extends HybridSessionStore_Base {
 	/**
 	 * List of session handlers
 	 *
-	 * @var array[SessionHandlerInterface]
+	 * @var array[HybridSessionHandlerInterface]
 	 */
 	protected $handlers = array();
 
 	/**
-	 * @param array[SessionHandlerInterface]
+	 * @param array[HybridSessionHandlerInterface]
 	 */
 	public function setHandlers($handlers) {
 		$this->handlers = $handlers;
+		$this->setKey($this->getKey());
+	}
+
+	public function setKey($key) {
+		parent::setKey($key);
+		foreach($this->handlers as $handler) {
+			$handler->setKey($key);
+		}
 	}
 
 	/**
@@ -503,8 +515,6 @@ class HybridSessionStore extends HybridSessionStore_Base {
 		}
 	}
 }
-
-register_sessionhandler(Injector::inst()->get('HybridSessionStore'));
 
 class HybridSessionStore_RequestFilter implements RequestFilter {
 	public function preRequest(SS_HTTPRequest $request, Session $session, DataModel $model) {
