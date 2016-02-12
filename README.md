@@ -20,6 +20,26 @@ multi-server issues like asset storage and databases).
   You can alternatively set a SS_SESSION_KEY constant in your _ss_environment.php.
 * /dev/build?flush=all to setup the necessary tables
 
+By default, encrypted cookies are used to retain session information. To explicitly define which handle to use, add the
+following to your `config.yml` configuration file.
+
+**Database only:**
+
+```yml
+HybridSessionStore:
+  handlers:
+    - HybridSessionStore_Database
+```
+
+**Cookie only:**
+
+```yml
+HybridSessionStore:
+  handlers:
+    - HybridSessionStore_Cookie
+```
+
+
 ## Security
 
 As long as the key is unguessable and secret, generally this should be as secure as server-side-only cookies. The one
